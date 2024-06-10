@@ -1,213 +1,137 @@
-# "Buy now" button with Ruby on Rails and Stripe Checkout API
+# Shoplify
 
-* [Live demo](https://shoplify.herokuapp.com/)
-* [Github source](https://github.com/yshmarov/shoplify)
-* [Stripe Dashboard](https://dashboard.stripe.com/)
-* [Stripe test credit cards](https://stripe.com/docs/testing)
-* [Stripe Checkout Migration guide](https://stripe.com/docs/payments/checkout/migration)
+## Table of Contents
 
-Button to buy a product
-![A screenshot of the app.](./shoplify-preview.png)
+- [Introduction](#introduction)
+- [Features](#features)
+- [Technologies Used](#technologies-used)
+- [Setup and Installation](#setup-and-installation)
+- [Usage](#usage)
+- [Folder Structure](#folder-structure)
 
-Redirects to Stripe Checkout page
-![stripe checkout preview.](./stripe-checkout-preview.png)
 
-****
+## Introduction
 
-generate scaffold:
-```
-rails g scaffold product name price:integer description:text --no-helper --no-assets --no-controller-specs --no-view-specs --no-test-framework --no-jbuilder 
-```
+Shoplify is a sample e-commerce application built using Ruby on Rails. It integrates with Stripe for payment processing, allowing users to browse products, add them to a cart, and complete purchases through Stripe's checkout system. This project demonstrates a full-stack web application with a focus on e-commerce functionalities.
 
-****
+## Features
 
-[Guide: editing credentials](https://blog.corsego.com/ruby-on-rails-6-credentials-tldr)
-```
-EDITOR=vim rails credentials:edit
-```
+- User authentication
+- Product catalog browsing
+- Shopping cart management
+- Stripe payment integration
+- Webhooks for handling payment events
+- Responsive design
 
-****
+## Technologies Used
 
-credentials.yml structure:
-```
-stripe:
-  public: YOUR_CODE
-  secret: YOUR_CODE
-  webhook: YOUR_CODE
-```
+- **Ruby on Rails**: The web application framework used for development.
+- **PostgreSQL**: Database management system.
+- **Devise**: Authentication solution for Rails.
+- **Stripe**: Payment processing.
+- **Webpacker**: For managing JavaScript assets.
+- **Bootstrap**: For responsive design and styling.
+- **RSpec**: For testing the application.
 
-****
+## Setup and Installation
 
-## Next step - associate current_user with stripe customer
+### Prerequisites
 
-* create stripe customer when creating a user
+Ensure you have the following installed on your local development environment:
 
-```
-after_create do
-  customer = Stripe::Customer.create(
-    email: email,
-  )
-  update(stripe_customer_id: customer.id)
-end
-```
+- Ruby 3.0.0 or newer
+- Rails 6.0.0 or newer
+- PostgreSQL
+- Node.js
+- Yarn
 
-* associate checkout to current user / customer
+### Installation Steps
 
-```
-  customer: 'cus_123',
-```
+1. **Clone the repository:**
 
-## Next step - Connect products from database with Stripe Products
+   ```bash
+   git clone https://github.com/yourusername/shoplify.git
+   cd shoplify
+   ```
 
-* add stripe_product_id to product
+2. **Install dependencies:**
 
-```
-stripe_product = Stripe::Product.create(name: "iphone 14")
-stripe_price = Stripe::Price.create(currency: "usd", product: stripe_product, unit_amount: 77700, lookup_key: "iphone 14")
-product = Product.create(name: stripe_product.name, price: stripe_price.unit_amount, stripe_product_id: stripe_product.id)
-```
+   ```bash
+   bundle install
+   yarn install
+   ```
 
-* and update webhook to find current product correctly
+3. **Setup the database:**
 
-[stripe expand docs](https://stripe.com/docs/expand)
+   ```bash
+   rails db:create
+   rails db:migrate
+   rails db:seed
+   ```
 
-```
-Stripe::Checkout::Session.retrieve({ id: session.id, expand: ["line_items"]})
-```
+4. **Set up Stripe:**
 
-## Next step - list stripe products and pay for them (without local database table) 
+   - Add your Stripe API keys to your environment variables or a credentials file.
 
-view
-```
-<% @prices = Stripe::Price.list(lookup_keys: ['iphone 14', 'iphone 15'], expand: ['data.product']).data.sort_by {|p| p.unit_amount} %>
-<% @prices.each do |price| %>
-  <br>
-  <%= price.product.name %>
-  <%= button_to checkout_create_path(price: price.id), remote: true, data: { disable_with: "Connecting..." } do %>
-    Buy now
-    <%= price.unit_amount/100 %>
-    <%= price.currency %>
-  <% end %>
-<% end %>
-```
-controller
-```
-@session = Stripe::Checkout::Session.create({
-  payment_method_types: ['card'],
-  line_items: [{
-    price: params[:price],
-    quantity: 1
-  }],
-  mode: 'payment',
-  success_url: root_url,
-  cancel_url: root_url,
-})
-```
+5. **Start the Rails server:**
 
-## display Checkout API data on success
+   ```bash
+   rails server
+   ```
 
-controller
-```
-success_url: root_url + '?session_id={CHECKOUT_SESSION_ID}',
-```
-view
-```
-<% if params[:session_id].present? %>
-  <% @session = Stripe::Checkout::Session.retrieve(params[:session_id]) %>
-  <% @payment_intent = Stripe::PaymentIntent.retrieve(@session.payment_intent) %>
+6. **Visit the application:**
 
-  Payement amount: 
-  <%= number_to_currency @payment_intent.amount_received / 100.0 %>.</p>
-  Payment status: 
-  <%= @payment_intent.status %>
-  <br>
-  <%= debug @session %>
-  <%= debug @payment_intent %>
-<% end %>
-```
+   Open your web browser and go to `http://localhost:3000`.
 
-## possible webhook for retreiving products
+## Usage
+
+Once the application is up and running, you can:
+
+- Sign up for a new account.
+- Browse the product catalog.
+- Add products to your shopping cart.
+- Proceed to checkout and complete purchases using Stripe.
+- View your order history.
+
+## Folder Structure
+
+Here is an overview of the main directories and files in the project:
 
 ```
-when "checkout.session.completed"
-session = event.data.object
-user = User.find_by(stripe_customer_id: session.customer)
-checkout_with_items = Stripe::Checkout.Session.retrieve({id: session.id, expand: ["line_items"]})
-checkout_with_items.line_items.data.each do |line_item|
-  product = Product.find_by(stripe_product_id: line_item.price.product)
-  user.user_products.create(product: product, price: line_item.price.unit_amount)
-  product.increment!(:sales_count)
-end
-```
-
-## session-based shopping cart
-
-products/index inside table
-```
-<% if @cart.include?(product) %>
-  <%= button_to "Remove from cart", remove_from_cart_path(product), method: :delete %>
-<% else %>
-  <%= button_to "Add to cart", add_to_cart_path(product) %>
-<% end %>
-```
-routes
-```
-post "products/add_to_cart/:id", to: "products#add_to_cart", as: "add_to_cart"
-delete "products/remove_from_cart/:id", to: "products#remove_from_cart", as: "remove_from_cart"
-```
-products_controller.rb
-```
-  def add_to_cart
-    id = params[:id].to_i
-    session[:cart] << id unless session[:cart].include?(id)
-    redirect_to products_path
-  end
-
-  def remove_from_cart
-    id = params[:id].to_i
-    session[:cart].delete(id)
-    redirect_to products_path
-  end
-```
-application_controller
-```
-  before_action :initialize_session
-  before_action :load_cart
-
-  private
-
-  def initialize_session
-    session[:cart] ||= [] # empty cart = empty array
-  end
-
-  def load_cart
-    @cart = Product.find(session[:cart])
-  end
-```
-application.html.erb
-```
-<h1>Shopping cart</h1>
-Items:
-<%= @cart.size %>
-<br>
-<% @cart.each do |cart_item| %>
-  <br>
-  <%= cart_item.name %>
-  <%= link_to "x", remove_from_cart_path(cart_item), method: :delete %>
-<% end %>
-```
-
-## transform items from shopping cart into stripe line_items
-product.rb
-```
-def to_builder
-	Jbuilder.new do |product|
-	  product.price stripe_price_id
-	  product.quantity 1
-	end
-end
-```
-checkout_controller
-```
-@cart.collect { |item| item.to_builder.attributes! },
+shoplify/
+├── app/
+│   ├── assets/
+│   │   ├── config/
+│   │   ├── images/
+│   │   └── stylesheets/
+│   ├── channels/
+│   ├── controllers/
+│   ├── helpers/
+│   ├── javascript/
+│   ├── jobs/
+│   ├── mailers/
+│   ├── models/
+│   ├── views/
+│   └── channels/
+├── bin/
+├── config/
+│   ├── environments/
+│   ├── initializers/
+│   ├── locales/
+│   └── application.rb
+├── db/
+│   ├── migrate/
+│   ├── schema.rb
+│   └── seeds.rb
+├── lib/
+├── log/
+├── public/
+├── test/
+├── tmp/
+├── vendor/
+├── Gemfile
+├── Gemfile.lock
+├── Rakefile
+├── config.ru
+└── README.md
 ```
